@@ -1,0 +1,11 @@
+# : comments
+
+# no .jpg files
+*.jpg
+
+# no .png files
+*.png
+
+# only ignore the TODO file in the current directory, not subdir/TODO
+*.pt
+*.pth
