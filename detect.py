@@ -1,23 +1,26 @@
 # python detect.py --trained_model /root/Plate-Landmarks-detection/weights/Resnet50_Final.pth --network resnet50 --save_image --input /root/dataset_clp/dataset_4p_700/images
 from __future__ import print_function
-import os
+
 import argparse
+import math
+import os
+import time
+
+import cv2
+import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
-import numpy as np
 from data import cfg_mnet, cfg_re50
 from layers.functions.prior_box import PriorBox
-from utils.nms.py_cpu_nms import py_cpu_nms
-import cv2
 from models.retinaface import RetinaFace
 from utils.box_utils import decode, decode_landm
-import time
+from utils.nms.py_cpu_nms import py_cpu_nms
 
 parser = argparse.ArgumentParser(description='Retinaface')
 
-parser.add_argument('-m', '--trained_model', default='./weights/mnet_plate.pth',
+parser.add_argument('-m', '--trained_model', default='./weights/Resnet50_Final.pth',
                     type=str, help='Trained state_dict file path to open')
-parser.add_argument('--network', default='mobile0.25', help='Backbone network mobile0.25 or resnet50')
+parser.add_argument('--network', default='resnet50', help='Backbone network mobile0.25 or resnet50')
 parser.add_argument('--save_image', action="store_true",  default=True, help='save_img')
 parser.add_argument('--cpu', action="store_true", default=False, help='Use cpu inference')
 parser.add_argument('--confidence_threshold', default=0.02, type=float, help='confidence_threshold')
@@ -25,9 +28,10 @@ parser.add_argument('--top_k', default=5000, type=int, help='top_k')
 parser.add_argument('--nms_threshold', default=0.3, type=float, help='nms_threshold')
 parser.add_argument('--keep_top_k', default=750, type=int, help='keep_top_k')
 parser.add_argument('--save_model', action="store_true", default=True, help='save full model')
-parser.add_argument('--input', default='./test.jpg', help='image input')
+parser.add_argument('--input', default='/root/License-Plate-Landmarks-detection/data/dataset/images/01_0607.jpg', help='image input')
 parser.add_argument('--input_dir', default='/root/dataset_clp/dataset_4p_700/images', help='image input')
 parser.add_argument('--vis_thres', default=0.6, type=float, help='visualization_threshold')
+parser.add_argument('--imgsz', default=320, type=int, help='image_reszie')
 args = parser.parse_args()
 
 
@@ -96,8 +100,8 @@ if __name__ == '__main__':
     
     for idx, image_files in enumerate(image_files) : 
         img_raw = cv2.imread(image_files, cv2.IMREAD_COLOR)
-        img_raw = cv2.resize(img_raw,(320,320))
-        img = np.float32(img_raw)
+        img_resize = cv2.resize(img_raw,(args.imgsz, args.imgsz))
+        img = np.float32(img_resize)
 
         im_height, im_width, _ = img.shape
         print("img.shape : " + str(img.shape))
@@ -168,11 +172,23 @@ if __name__ == '__main__':
                 text = "{:.4f}".format(b[4])
                 b = list(map(int, b))
                 # cv2.rectangle(img_raw, (b[0], b[1]), (b[2], b[3]), (0, 0, 255), 2)
+                
                 cx = b[0]
                 cy = b[1] + 12
                 # cv2.putText(img_raw, text, (cx, cy),
                             # cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
-                # landms
+                h, w ,_ = img_raw.shape
+                # # landms
+                # 다시 Resize
+                b[5] = math.floor((b[5] / args.imgsz) * w)
+                b[7] = math.floor((b[7] / args.imgsz) * w)
+                b[9] = math.floor((b[9] / args.imgsz) * w)
+                b[11] = math.floor((b[11] / args.imgsz) * w)
+                
+                b[6] = math.floor((b[6] / args.imgsz) * h)
+                b[8] = math.floor((b[8] / args.imgsz) * h)
+                b[10] = math.floor((b[10] / args.imgsz) * h)
+                b[12] = math.floor((b[12] / args.imgsz) * h)
                 cv2.circle(img_raw, (b[5], b[6]), 1, (0, 0, 255), 4)
                 cv2.circle(img_raw, (b[7], b[8]), 1, (0, 255, 255), 4)
                 cv2.circle(img_raw, (b[9], b[10]), 1, (255, 0, 255), 4)
@@ -180,8 +196,8 @@ if __name__ == '__main__':
                 # cv2.circle(img_raw, (b[13], b[14]), 1, (255, 0, 0), 4)
                 # save image
 
-            result_path = "/root/Plate-Landmarks-detection/result"
+            result_path = "/root/License-Plate-Landmarks-detection/result/"
             print("img_raw.shape : " + str(img_raw.shape))
-            print(("4-point : %d,%d / %d,%d / %d,%d / %d,%d"%(b[5],b[6], b[7],b[8], b[9],b[10], b[11],b[12])))
+            print(("4-point : %d,%d / %d,%d / %d,%d / %d,%d" % (b[5],b[6], b[7],b[8], b[9],b[10], b[11],b[12])))
             cv2.imwrite(os.path.join(result_path, os.path.basename(image_files)), img_raw)
 

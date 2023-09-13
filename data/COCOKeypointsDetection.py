@@ -22,7 +22,7 @@ class COCOKeypointsDetection(data.Dataset):
 
             # Extract image paths and annotations from COCO format
             for image_info in coco_data['images']:
-                img_dir = "/root/Plate-Landmarks-detection/data/dataset/images/"
+                img_dir = "/root/License-Plate-Landmarks-detection/data/dataset/images/"
                 self.imgs_path.append(img_dir + image_info['file_name'])
                 image_id = image_info['id']
                 image_annotations = []
@@ -90,7 +90,7 @@ class COCOKeypointsDetection(data.Dataset):
                 if self.preproc is not None:
                     img, target = self.preproc(img, target)
             elif self.type == "valid" :
-                print("valid")
+                # print("valid")
                 transform = A.Compose([
                     A.Resize(320,320)
                 ],  keypoint_params=A.KeypointParams(format='xy'))
@@ -122,11 +122,9 @@ class COCOKeypointsDetection(data.Dataset):
                         elif idx == 5 :
                             target[key_idx, 10] = round(t_key[0] / 320, 8)
                             target[key_idx, 11] = round(t_key[1] / 320, 8)
-                            if np.any(target[key_idx]) < 0 :
-                                print(target[key_idx])
                     img = img.transpose(2, 0, 1)
-            print(img.shape)
-            print(target[0])
+            # print(img.shape)
+            # print(target[0])
             return torch.from_numpy(img), target
 
 def detection_collate(batch):

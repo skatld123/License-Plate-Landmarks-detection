@@ -1,5 +1,6 @@
 # : comments
-
+*.txt
+*.pyc
 # no .jpg files
 *.jpg
 
