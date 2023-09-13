@@ -5,9 +5,9 @@ import torchvision.models._utils as _utils
 import torch.nn.functional as F
 from collections import OrderedDict
 
-from models.net import MobileNetV1 as MobileNetV1
-from models.net import FPN as FPN
-from models.net import SSH as SSH
+from clp_landmark_detection.models.net import MobileNetV1 as MobileNetV1
+from clp_landmark_detection.models.net import FPN as FPN
+from clp_landmark_detection.models.net import SSH as SSH
 
 cfgs_mnet = {
     'name': 'mobilenet0.25',
