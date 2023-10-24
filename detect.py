@@ -201,6 +201,19 @@ def predict(backbone='resnet50', save_img=False, save_txt=False, input_path=None
                 b[8] = math.floor((b[8] / imgsz) * h)
                 b[10] = math.floor((b[10] / imgsz) * h)
                 b[12] = math.floor((b[12] / imgsz) * h)
+                
+                # 값 수정
+                for i in range(8):  # b[5]부터 b[12]까지 수정
+                    if i % 2 == 0:  # 짝수 인덱스는 너비(w) 관련 값
+                        if b[5 + i] <= 0:
+                            b[5 + i] = 1
+                        elif b[5 + i] >= w:
+                            b[5 + i] = w - 1
+                    else:  # 홀수 인덱스는 높이(h) 관련 값
+                        if b[5 + i] <= 0:
+                            b[5 + i] = 1
+                        elif b[5 + i] >= h:
+                            b[5 + i] = h - 1
                 cv2.circle(img_raw, (b[5], b[6]), 1, (0, 0, 255), 4)
                 cv2.circle(img_raw, (b[7], b[8]), 1, (0, 255, 255), 4)
                 cv2.circle(img_raw, (b[9], b[10]), 1, (255, 0, 255), 4)
@@ -230,6 +243,19 @@ def predict(backbone='resnet50', save_img=False, save_txt=False, input_path=None
             b[8] = math.floor((b[8] / imgsz) * h)
             b[10] = math.floor((b[10] / imgsz) * h)
             b[12] = math.floor((b[12] / imgsz) * h)
+            
+            # 값 수정
+            for i in range(8):  # b[5]부터 b[12]까지 수정
+                if i % 2 == 0:  # 짝수 인덱스는 너비(w) 관련 값
+                    if b[5 + i] <= 0:
+                        b[5 + i] = 1
+                    elif b[5 + i] >= w:
+                        b[5 + i] = w - 1
+                else:  # 홀수 인덱스는 높이(h) 관련 값
+                    if b[5 + i] <= 0:
+                        b[5 + i] = 1
+                    elif b[5 + i] >= h:
+                        b[5 + i] = h - 1
             # landms
             # filename, score, (bx1,by1, bx2,by2), ((x1, y1), (x2, y2), (x3, y3), (x4, y4))
             predict = [os.path.basename(image_files), b[4], [b[0],b[1],b[2],b[3]],
