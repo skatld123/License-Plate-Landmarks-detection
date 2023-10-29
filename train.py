@@ -19,11 +19,11 @@ import matplotlib.pyplot as plt
 
 
 # 로그를 저장할 폴더 설정
-log_folder = '/root/License-Plate-Landmarks-detection/logs/'
+log_folder = '/root//root/clp_landmark_detection/logs/'
 os.makedirs(log_folder, exist_ok=True)
 
 # 로그 파일 생성
-log_file = os.path.join(log_folder, '/root/License-Plate-Landmarks-detection/training_log.txt')
+log_file = os.path.join(log_folder, '/root//root/clp_landmark_detection/training_log.txt')
 logging.basicConfig(filename=log_file, level=logging.INFO, filemode="w",
                     format='%(asctime)s - %(levelname)s: %(message)s')
 
@@ -33,8 +33,8 @@ epochs = []
 
 parser = argparse.ArgumentParser(description='Retinaface Training')
 # parser.add_argument('--training_dataset', default='./data/widerface/train/label.txt', help='Training dataset directory')
-parser.add_argument('--training_dataset', default='/root/License-Plate-Landmarks-detection/data/dataset/train.json', help='Training dataset directory')
-parser.add_argument('--valid_dataset', default='/root/License-Plate-Landmarks-detection/data/dataset/test.json', help='val dataset directory')
+parser.add_argument('--training_dataset', default='/root//root/clp_landmark_detection/data/dataset/train.json', help='Training dataset directory')
+parser.add_argument('--valid_dataset', default='/root//root/clp_landmark_detection/data/dataset/test.json', help='val dataset directory')
 parser.add_argument('--network', default='resnet50', help='Backbone network mobile0.25 or resnet50')
 parser.add_argument('--num_workers', default=4, type=int, help='Number of workers used in dataloading')
 parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float, help='initial learning rate')

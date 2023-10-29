@@ -10,11 +10,15 @@ import cv2
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
+import numpy as np
 from data import cfg_mnet, cfg_re50
+from utils.nms.py_cpu_nms import py_cpu_nms
 from layers.functions.prior_box import PriorBox
+import cv2
 from models.retinaface import RetinaFace
 from utils.box_utils import decode, decode_landm
-from utils.nms.py_cpu_nms import py_cpu_nms
+import time
+from tqdm import tqdm
 
 parser = argparse.ArgumentParser(description='Retinaface')
 
@@ -69,6 +73,199 @@ def load_model(model, pretrained_path, load_to_cpu):
     check_keys(model, pretrained_dict)
     model.load_state_dict(pretrained_dict, strict=False)
     return model
+
+def predict(backbone='resnet50', save_img=False, save_txt=False, input_path=None, output_path=None, 
+            nms_threshold=0.3, vis_thres=0.5, imgsz=320, checkpoint_model=None) :
+    torch.set_grad_enabled(False)
+    cfg = None
+    if backbone == "mobile0.25":
+        cfg = cfg_mnet
+    elif backbone == "resnet50":
+        cfg = cfg_re50
+    # net and model
+    net = RetinaFace(cfg=cfg, phase='test')
+    if checkpoint_model == None :
+        print("Error : there is no pretrained model!")
+        return
+    net = load_model(net, checkpoint_model, args.cpu)
+    net.eval()
+    print('Finished loading model!')
+    cudnn.benchmark = True
+    device = torch.device("cpu" if args.cpu else "cuda")
+    net = net.to(device)
+    # if args.save_model:
+    #     torch.save(net, "retinaface.pth")
+
+    resize = 1
+
+    image_path = input_path
+    if os.path.isdir(image_path):
+        image_files = [os.path.join(image_path, f) for f in os.listdir(
+            image_path) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+    else:
+        image_files = [image_path]
+
+    result = [] # cls, (bx1,by1, bx2,by2), ((x1, y1), (x2, y2), (x3, y3), (x4, y4))
+    
+    for idx, image_files in enumerate(tqdm(image_files)):
+        img_raw = cv2.imread(image_files, cv2.IMREAD_COLOR)
+        img_resize = cv2.resize(img_raw, (imgsz, imgsz))
+        img = np.float32(img_resize)
+
+        im_height, im_width, _ = img.shape
+        # print("img.shape : " + str(img.shape))
+        scale = torch.Tensor(
+            [img.shape[1], img.shape[0], img.shape[1], img.shape[0]])
+        # print("scale.shape : " + str(scale))
+        # 색상 빼기
+        img -= (104, 117, 123)
+        img = img.transpose(2, 0, 1)
+        img = torch.from_numpy(img).unsqueeze(0)
+        img = img.to(device)
+        scale = scale.to(device)
+
+        tic = time.time()
+        loc, conf, landms = net(img)  # forward pass
+        # print('net forward time: {:.4f}'.format(time.time() - tic))
+
+        priorbox = PriorBox(cfg, image_size=(im_height, im_width))
+        priors = priorbox.forward()
+        priors = priors.to(device)
+        prior_data = priors.data
+        boxes = decode(loc.data.squeeze(0), prior_data, cfg['variance'])
+        boxes = boxes * scale / resize
+        boxes = boxes.cpu().numpy()
+        scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
+        landms = decode_landm(landms.data.squeeze(0),
+                              prior_data, cfg['variance'])
+        # print("landms shape : " + str(landms.shape))
+
+        scale1 = torch.Tensor([img.shape[3], img.shape[2], img.shape[3], img.shape[2],
+                               img.shape[3], img.shape[2], img.shape[3], img.shape[2]])
+        # print("scale shape : " + str(scale1))
+        scale1 = scale1.to(device)
+        # print("landms min : " + str(landms.min()))
+        # print("landms max : " + str(landms.max()))
+        landms = landms * scale1 / resize
+        landms = landms.cpu().numpy()
+
+        # ignore low scores
+        inds = np.where(scores > args.confidence_threshold)[0]
+        boxes = boxes[inds]
+        landms = landms[inds]
+        scores = scores[inds]
+
+        # keep top-K before NMS
+        order = scores.argsort()[::-1][:args.top_k]
+        boxes = boxes[order]
+        landms = landms[order]
+        scores = scores[order]
+        # print("landms min : " + str(landms.min()))
+        # print("landms max : " + str(landms.max()))
+        # do NMS
+        dets = np.hstack((boxes, scores[:, np.newaxis])).astype(
+            np.float32, copy=False)
+        keep = py_cpu_nms(dets, args.nms_threshold)
+        # keep = nms(dets, args.nms_threshold,force_cpu=args.cpu)
+        dets = dets[keep, :]
+        landms = landms[keep]
+
+        # keep top-K faster NMS
+        dets = dets[:args.keep_top_k, :]
+        landms = landms[:args.keep_top_k, :]
+
+        dets = np.concatenate((dets, landms), axis=1)
+
+        # show image
+        if save_img :
+            for b in dets:
+                if b[4] < vis_thres :
+                    continue
+                text = "{:.4f}".format(b[4])
+                b = list(map(int, b))
+                # cv2.rectangle(img_raw, (b[0], b[1]), (b[2], b[3]), (0, 0, 255), 2)
+                cx = b[0]
+                cy = b[1] + 12
+                # cv2.putText(img_raw, text, (cx, cy),
+                # cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
+                h, w, _ = img_raw.shape
+                # landms
+                # 다시 Resize
+                b[5] = math.floor((b[5] / imgsz) * w)
+                b[7] = math.floor((b[7] / imgsz) * w)
+                b[9] = math.floor((b[9] / imgsz) * w)
+                b[11] = math.floor((b[11] / imgsz) * w)
+
+                b[6] = math.floor((b[6] / imgsz) * h)
+                b[8] = math.floor((b[8] / imgsz) * h)
+                b[10] = math.floor((b[10] / imgsz) * h)
+                b[12] = math.floor((b[12] / imgsz) * h)
+                
+                # 값 수정
+                for i in range(8):  # b[5]부터 b[12]까지 수정
+                    if i % 2 == 0:  # 짝수 인덱스는 너비(w) 관련 값
+                        if b[5 + i] <= 0:
+                            b[5 + i] = 1
+                        elif b[5 + i] >= w:
+                            b[5 + i] = w - 1
+                    else:  # 홀수 인덱스는 높이(h) 관련 값
+                        if b[5 + i] <= 0:
+                            b[5 + i] = 1
+                        elif b[5 + i] >= h:
+                            b[5 + i] = h - 1
+                cv2.circle(img_raw, (b[5], b[6]), 1, (0, 0, 255), 4)
+                cv2.circle(img_raw, (b[7], b[8]), 1, (0, 255, 255), 4)
+                cv2.circle(img_raw, (b[9], b[10]), 1, (255, 0, 255), 4)
+                cv2.circle(img_raw, (b[11], b[12]), 1, (0, 255, 0), 4)
+                # cv2.circle(img_raw, (b[13], b[14]), 1, (255, 0, 0), 4)
+                # save image
+
+                # print("img_raw.shape : " + str(img_raw.shape))
+                # print(("4-point : %d,%d / %d,%d / %d,%d / %d,%d" %
+                #       (b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12])))
+                cv2.imwrite(os.path.join(
+                    output_path, "images", os.path.basename(image_files)), img_raw)
+        # save_txt and return
+        for b in dets:
+            # @@TODO b4가 뭘까
+            if b[4] < vis_thres:
+                continue
+            b = list(map(int, b))
+            h, w, _ = img_raw.shape
+            # landms
+            b[5] = math.floor((b[5] / imgsz) * w)
+            b[7] = math.floor((b[7] / imgsz) * w)
+            b[9] = math.floor((b[9] / imgsz) * w)
+            b[11] = math.floor((b[11] / imgsz) * w)
+
+            b[6] = math.floor((b[6] / imgsz) * h)
+            b[8] = math.floor((b[8] / imgsz) * h)
+            b[10] = math.floor((b[10] / imgsz) * h)
+            b[12] = math.floor((b[12] / imgsz) * h)
+            
+            # 값 수정
+            for i in range(8):  # b[5]부터 b[12]까지 수정
+                if i % 2 == 0:  # 짝수 인덱스는 너비(w) 관련 값
+                    if b[5 + i] <= 0:
+                        b[5 + i] = 1
+                    elif b[5 + i] >= w:
+                        b[5 + i] = w - 1
+                else:  # 홀수 인덱스는 높이(h) 관련 값
+                    if b[5 + i] <= 0:
+                        b[5 + i] = 1
+                    elif b[5 + i] >= h:
+                        b[5 + i] = h - 1
+            # landms
+            # filename, score, (bx1,by1, bx2,by2), ((x1, y1), (x2, y2), (x3, y3), (x4, y4))
+            predict = [os.path.splitext(os.path.basename(image_files))[0], b[4], [b[0],b[1],b[2],b[3]],
+                       [[b[5], b[6]], [b[7], b[8]], [b[9], b[10]], [b[11], b[12]]]]
+            result.append(predict)
+            if save_txt : 
+                f = open(output_path + "/labels/" +
+                         os.path.splitext(os.path.basename(image_files))[0] + ".txt", "w+")
+                f.write(" ".join(map(str, predict)))
+                f.close()
+    return result
 
 
 if __name__ == '__main__':
