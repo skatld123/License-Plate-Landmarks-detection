@@ -1,6 +1,7 @@
 # python detect.py --trained_model /root/Plate-Landmarks-detection/weights/Resnet50_Final.pth --network resnet50 --save_image --input /root/dataset_clp/dataset_4p_700/images
 from __future__ import print_function
-
+import math
+import os
 import argparse
 import math
 import os
@@ -11,12 +12,12 @@ import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 import numpy as np
-from data import cfg_mnet, cfg_re50
-from utils.nms.py_cpu_nms import py_cpu_nms
-from layers.functions.prior_box import PriorBox
+from clp_landmark_detection.data import cfg_mnet, cfg_re50
+from clp_landmark_detection.utils.nms.py_cpu_nms import py_cpu_nms
+from clp_landmark_detection.layers.functions.prior_box import PriorBox
 import cv2
-from models.retinaface import RetinaFace
-from utils.box_utils import decode, decode_landm
+from clp_landmark_detection.models.retinaface import RetinaFace
+from clp_landmark_detection.utils.box_utils import decode, decode_landm
 import time
 from tqdm import tqdm
 
@@ -34,7 +35,7 @@ parser.add_argument('--keep_top_k', default=750, type=int, help='keep_top_k')
 parser.add_argument('--save_model', action="store_true", default=True, help='save full model')
 parser.add_argument('--input', default='/root/License-Plate-Landmarks-detection/data/dataset/images/01_0607.jpg', help='image input')
 parser.add_argument('--input_dir', default='/root/dataset_clp/dataset_4p_700/images', help='image input')
-parser.add_argument('--vis_thres', default=0.6, type=float, help='visualization_threshold')
+parser.add_argument('--vis_thres', default=0.5, type=float, help='visualization_threshold')
 parser.add_argument('--imgsz', default=320, type=int, help='image_reszie')
 args = parser.parse_args()
 
@@ -200,19 +201,6 @@ def predict(backbone='resnet50', save_img=False, save_txt=False, input_path=None
                 b[8] = math.floor((b[8] / imgsz) * h)
                 b[10] = math.floor((b[10] / imgsz) * h)
                 b[12] = math.floor((b[12] / imgsz) * h)
-                
-                # 값 수정
-                for i in range(8):  # b[5]부터 b[12]까지 수정
-                    if i % 2 == 0:  # 짝수 인덱스는 너비(w) 관련 값
-                        if b[5 + i] <= 0:
-                            b[5 + i] = 1
-                        elif b[5 + i] >= w:
-                            b[5 + i] = w - 1
-                    else:  # 홀수 인덱스는 높이(h) 관련 값
-                        if b[5 + i] <= 0:
-                            b[5 + i] = 1
-                        elif b[5 + i] >= h:
-                            b[5 + i] = h - 1
                 cv2.circle(img_raw, (b[5], b[6]), 1, (0, 0, 255), 4)
                 cv2.circle(img_raw, (b[7], b[8]), 1, (0, 255, 255), 4)
                 cv2.circle(img_raw, (b[9], b[10]), 1, (255, 0, 255), 4)
@@ -242,27 +230,14 @@ def predict(backbone='resnet50', save_img=False, save_txt=False, input_path=None
             b[8] = math.floor((b[8] / imgsz) * h)
             b[10] = math.floor((b[10] / imgsz) * h)
             b[12] = math.floor((b[12] / imgsz) * h)
-            
-            # 값 수정
-            for i in range(8):  # b[5]부터 b[12]까지 수정
-                if i % 2 == 0:  # 짝수 인덱스는 너비(w) 관련 값
-                    if b[5 + i] <= 0:
-                        b[5 + i] = 1
-                    elif b[5 + i] >= w:
-                        b[5 + i] = w - 1
-                else:  # 홀수 인덱스는 높이(h) 관련 값
-                    if b[5 + i] <= 0:
-                        b[5 + i] = 1
-                    elif b[5 + i] >= h:
-                        b[5 + i] = h - 1
             # landms
             # filename, score, (bx1,by1, bx2,by2), ((x1, y1), (x2, y2), (x3, y3), (x4, y4))
-            predict = [os.path.splitext(os.path.basename(image_files))[0], b[4], [b[0],b[1],b[2],b[3]],
+            predict = [os.path.basename(image_files), b[4], [b[0],b[1],b[2],b[3]],
                        [[b[5], b[6]], [b[7], b[8]], [b[9], b[10]], [b[11], b[12]]]]
             result.append(predict)
             if save_txt : 
                 f = open(output_path + "/labels/" +
-                         os.path.splitext(os.path.basename(image_files))[0] + ".txt", "w+")
+                         os.path.basename(image_files) + ".txt", "w+")
                 f.write(" ".join(map(str, predict)))
                 f.close()
     return result
@@ -290,11 +265,14 @@ if __name__ == '__main__':
 
     
     image_path = args.input
+    image_path = '/root/dataset_clp/dataset_crop_lp/images'
     if os.path.isdir(image_path) :
         image_files = [os.path.join(image_path, f) for f in os.listdir(image_path) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
     else : 
         image_files = [image_path]
-    
+    result = [] # cls, (bx1,by1, bx2,by2), ((x1, y1), (x2, y2), (x3, y3), (x4, y4))
+    save_txt = True
+    output_path = '/root/dataset_clp/dataset_crop_lp/labels'
     for idx, image_files in enumerate(image_files) : 
         img_raw = cv2.imread(image_files, cv2.IMREAD_COLOR)
         img_resize = cv2.resize(img_raw,(args.imgsz, args.imgsz))
@@ -397,4 +375,30 @@ if __name__ == '__main__':
             print("img_raw.shape : " + str(img_raw.shape))
             print(("4-point : %d,%d / %d,%d / %d,%d / %d,%d" % (b[5],b[6], b[7],b[8], b[9],b[10], b[11],b[12])))
             cv2.imwrite(os.path.join(result_path, os.path.basename(image_files)), img_raw)
+            # save_txt and return
+        for b in dets:
+            # @@TODO b4가 뭘까
+            if b[4] < 0.5:
+                continue
+            b = list(map(int, b))
+            h, w, _ = img_raw.shape
+            imgsz = 320
+            # landms
+            b[5] = math.floor((b[5] / imgsz) * w)
+            b[7] = math.floor((b[7] / imgsz) * w)
+            b[9] = math.floor((b[9] / imgsz) * w)
+            b[11] = math.floor((b[11] / imgsz) * w)
 
+            b[6] = math.floor((b[6] / imgsz) * h)
+            b[8] = math.floor((b[8] / imgsz) * h)
+            b[10] = math.floor((b[10] / imgsz) * h)
+            b[12] = math.floor((b[12] / imgsz) * h)
+            # landms
+            # filename, score, (bx1,by1, bx2,by2), ((x1, y1), (x2, y2), (x3, y3), (x4, y4))
+            predict = [os.path.basename(image_files), b[4], [b[0],b[1],b[2],b[3]],
+                        [[b[5], b[6]], [b[7], b[8]], [b[9], b[10]], [b[11], b[12]]]]
+            result.append(predict)
+            if save_txt : 
+                f = open(os.path.join(output_path,"labels", os.path.basename(image_files) + ".txt", "w+"))
+                f.write(" ".join(map(str, predict)))
+                f.close()
