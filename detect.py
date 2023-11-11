@@ -1,7 +1,6 @@
 # python detect.py --trained_model /root/Plate-Landmarks-detection/weights/Resnet50_Final.pth --network resnet50 --save_image --input /root/dataset_clp/dataset_4p_700/images
 from __future__ import print_function
-import math
-import os
+
 import argparse
 import math
 import os
@@ -11,22 +10,20 @@ import cv2
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
-import numpy as np
+from tqdm import tqdm
+
 from clp_landmark_detection.data import cfg_mnet, cfg_re50
-from clp_landmark_detection.utils.nms.py_cpu_nms import py_cpu_nms
 from clp_landmark_detection.layers.functions.prior_box import PriorBox
-import cv2
 from clp_landmark_detection.models.retinaface import RetinaFace
 from clp_landmark_detection.utils.box_utils import decode, decode_landm
-import time
-from tqdm import tqdm
+from clp_landmark_detection.utils.nms.py_cpu_nms import py_cpu_nms
 
 parser = argparse.ArgumentParser(description='Retinaface')
 
 parser.add_argument('-m', '--trained_model', default='./weights/Resnet50_Final.pth',
                     type=str, help='Trained state_dict file path to open')
 parser.add_argument('--network', default='resnet50', help='Backbone network mobile0.25 or resnet50')
-parser.add_argument('--save_image', action="store_true",  default=True, help='save_img')
+parser.add_argument('--save_image', action="store_true",  default=False, help='save_img')
 parser.add_argument('--cpu', action="store_true", default=False, help='Use cpu inference')
 parser.add_argument('--confidence_threshold', default=0.02, type=float, help='confidence_threshold')
 parser.add_argument('--top_k', default=5000, type=int, help='top_k')
@@ -211,8 +208,9 @@ def predict(backbone='resnet50', save_img=False, save_txt=False, input_path=None
                 # print("img_raw.shape : " + str(img_raw.shape))
                 # print(("4-point : %d,%d / %d,%d / %d,%d / %d,%d" %
                 #       (b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12])))
-                cv2.imwrite(os.path.join(
-                    output_path, "images", os.path.basename(image_files)), img_raw)
+                save_path = os.path.join(output_path, "images")
+                os.makedirs(save_path, exist_ok=True)
+                cv2.imwrite(os.path.join(save_path, os.path.basename(image_files)), img_raw)
         # save_txt and return
         for b in dets:
             # @@TODO b4가 뭘까
@@ -236,12 +234,10 @@ def predict(backbone='resnet50', save_img=False, save_txt=False, input_path=None
                        [[b[5], b[6]], [b[7], b[8]], [b[9], b[10]], [b[11], b[12]]]]
             result.append(predict)
             if save_txt : 
-                f = open(output_path + "/labels/" +
-                         os.path.basename(image_files) + ".txt", "w+")
+                f = open(os.path.join(output_path, "/labels/", os.path.splitext(os.path.basename(image_files))[0] + ".txt"), "w+")
                 f.write(" ".join(map(str, predict)))
                 f.close()
     return result
-
 
 if __name__ == '__main__':
     torch.set_grad_enabled(False)
@@ -252,7 +248,8 @@ if __name__ == '__main__':
         cfg = cfg_re50
     # net and model
     net = RetinaFace(cfg=cfg, phase = 'test')
-    net = load_model(net, args.trained_model, args.cpu)
+    trained_model = '/root/clp_landmark_detection/Resnet50_Final.pth'
+    net = load_model(net, trained_model, args.cpu)
     net.eval()
     print('Finished loading model!')
     cudnn.benchmark = True
@@ -399,6 +396,6 @@ if __name__ == '__main__':
                         [[b[5], b[6]], [b[7], b[8]], [b[9], b[10]], [b[11], b[12]]]]
             result.append(predict)
             if save_txt : 
-                f = open(os.path.join(output_path,"labels", os.path.basename(image_files) + ".txt", "w+"))
+                f = open(os.path.join(output_path, os.path.splitext(os.path.basename(image_files))[0] + ".txt"), "w+")
                 f.write(" ".join(map(str, predict)))
                 f.close()
