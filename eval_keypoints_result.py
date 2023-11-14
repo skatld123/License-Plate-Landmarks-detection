@@ -1,6 +1,8 @@
 # python detect.py --trained_model /root/Plate-Landmarks-detection/weights/Resnet50_Final.pth --network resnet50 --save_image --input /root/dataset_clp/dataset_4p_700/images
 from __future__ import print_function
-
+import json
+import math
+import os
 import argparse
 import math
 import os
@@ -10,20 +12,22 @@ import cv2
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
+import numpy as np
+from data import cfg_mnet, cfg_re50
+from utils.nms.py_cpu_nms import py_cpu_nms
+from layers.functions.prior_box import PriorBox
+import cv2
+from models.retinaface import RetinaFace
+from utils.box_utils import decode, decode_landm
+import time
 from tqdm import tqdm
-
-from clp_landmark_detection.data import cfg_mnet, cfg_re50
-from clp_landmark_detection.layers.functions.prior_box import PriorBox
-from clp_landmark_detection.models.retinaface import RetinaFace
-from clp_landmark_detection.utils.box_utils import decode, decode_landm
-from clp_landmark_detection.utils.nms.py_cpu_nms import py_cpu_nms
-
+from make_coco_format import make_annotation, make_categories, make_data, make_image, make_keypoints_results
 parser = argparse.ArgumentParser(description='Retinaface')
 
 parser.add_argument('-m', '--trained_model', default='./weights/Resnet50_Final.pth',
                     type=str, help='Trained state_dict file path to open')
 parser.add_argument('--network', default='resnet50', help='Backbone network mobile0.25 or resnet50')
-parser.add_argument('--save_image', action="store_true",  default=False, help='save_img')
+parser.add_argument('--save_image', action="store_true",  default=True, help='save_img')
 parser.add_argument('--cpu', action="store_true", default=False, help='Use cpu inference')
 parser.add_argument('--confidence_threshold', default=0.02, type=float, help='confidence_threshold')
 parser.add_argument('--top_k', default=5000, type=int, help='top_k')
@@ -36,7 +40,17 @@ parser.add_argument('--vis_thres', default=0.5, type=float, help='visualization_
 parser.add_argument('--imgsz', default=320, type=int, help='image_reszie')
 args = parser.parse_args()
 
-
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        else:
+            return super(NpEncoder, self).default(obj)
+        
 def check_keys(model, pretrained_state_dict):
     ckpt_keys = set(pretrained_state_dict.keys())
     model_keys = set(model.state_dict().keys())
@@ -208,9 +222,8 @@ def predict(backbone='resnet50', save_img=False, save_txt=False, input_path=None
                 # print("img_raw.shape : " + str(img_raw.shape))
                 # print(("4-point : %d,%d / %d,%d / %d,%d / %d,%d" %
                 #       (b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12])))
-                save_path = os.path.join(output_path, "images")
-                os.makedirs(save_path, exist_ok=True)
-                cv2.imwrite(os.path.join(save_path, os.path.basename(image_files)), img_raw)
+                cv2.imwrite(os.path.join(
+                    output_path, "images", os.path.basename(image_files)), img_raw)
         # save_txt and return
         for b in dets:
             # @@TODO b4가 뭘까
@@ -234,12 +247,34 @@ def predict(backbone='resnet50', save_img=False, save_txt=False, input_path=None
                        [[b[5], b[6]], [b[7], b[8]], [b[9], b[10]], [b[11], b[12]]]]
             result.append(predict)
             if save_txt : 
-                f = open(os.path.join(output_path, "/labels/", os.path.splitext(os.path.basename(image_files))[0] + ".txt"), "w+")
+                f = open(output_path + "/labels/" +
+                         os.path.basename(image_files) + ".txt", "w+")
                 f.write(" ".join(map(str, predict)))
                 f.close()
     return result
 
+# JSON 파일을 로드하는 함수
+def load_json(filename):
+    with open(filename, 'r') as file:
+        data = json.load(file)
+    return data
+
 if __name__ == '__main__':
+    
+    resize = 1
+    final_result = [] 
+    final_annotations = []
+    final_images = []
+    final_results_name = os.path.splitext(os.path.basename(args.trained_model))[0]
+    detection_results = []
+    input_path = args.input
+    input_path = '/root/dataset/dataset_4p_700/split_test'
+    label_path = '/root/dataset/dataset_4p_700/test.json'
+    output_path = '/root/dataset/dataset_4p_700/predicts'
+    
+    if os.path.exists(label_path) :
+        gt_annotations = load_json(label_path)
+    
     torch.set_grad_enabled(False)
     cfg = None
     if args.network == "mobile0.25":
@@ -247,29 +282,35 @@ if __name__ == '__main__':
     elif args.network == "resnet50":
         cfg = cfg_re50
     # net and model
+    args.trained_model = '/root/deIdentification-clp/clp_landmark_detection/weights/origin/Resnet50_Final.pth'
+    
     net = RetinaFace(cfg=cfg, phase = 'test')
-    trained_model = '/root/clp_landmark_detection/Resnet50_Final.pth'
-    net = load_model(net, trained_model, args.cpu)
+    net = load_model(net, args.trained_model, args.cpu)
     net.eval()
     print('Finished loading model!')
     cudnn.benchmark = True
     device = torch.device("cpu" if args.cpu else "cuda")
     net = net.to(device)
-    if args.save_model:
-        torch.save(net, "/root/deIdentification-clp/clp_landmark_detection/weights/aug/Resnet50_Final.pth")
-    resize = 1
-    
-    image_path = args.input
-    image_path = '/root/dataset/dataset_4p_aug/images'
-    if os.path.isdir(image_path) :
-        image_files = [os.path.join(image_path, f) for f in os.listdir(image_path) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+
+    if os.path.isdir(input_path) :
+        image_files = [os.path.join(input_path, f) for f in os.listdir(input_path) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
     else : 
-        image_files = [image_path]
+        image_files = [input_path]
     result = [] # cls, (bx1,by1, bx2,by2), ((x1, y1), (x2, y2), (x3, y3), (x4, y4))
     save_txt = True
-    output_path = '/root/dataset/dataset_4p_aug/predicts/labels'
-    for idx, image_files in enumerate(image_files) : 
-        img_raw = cv2.imread(image_files, cv2.IMREAD_COLOR)
+    # for idx, image_files in enumerate(image_files) : 
+    for image_info in gt_annotations['images'] :
+        image_file = None
+        image_id = image_info['id']
+        for anno in gt_annotations['annotations']:
+            if anno['image_id'] == image_id:
+                anno_category_id = anno['category_id']
+                anno_id = anno['id']
+                anno_img_id = anno['image_id']
+                image_file = os.path.join(input_path, image_info["file_name"])
+                break
+            
+        img_raw = cv2.imread(image_file, cv2.IMREAD_COLOR)
         img_resize = cv2.resize(img_raw,(args.imgsz, args.imgsz))
         img = np.float32(img_resize)
 
@@ -366,15 +407,17 @@ if __name__ == '__main__':
                 # cv2.circle(img_raw, (b[13], b[14]), 1, (255, 0, 0), 4)
                 # save image
 
-            result_path = "/root/License-Plate-Landmarks-detection/result/"
+            result_path = os.path.join(output_path, 'images')
+            os.makedirs(result_path, exist_ok=True)
             print("img_raw.shape : " + str(img_raw.shape))
             print(("4-point : %d,%d / %d,%d / %d,%d / %d,%d" % (b[5],b[6], b[7],b[8], b[9],b[10], b[11],b[12])))
-            cv2.imwrite(os.path.join(result_path, os.path.basename(image_files)), img_raw)
+            cv2.imwrite(os.path.join(result_path, os.path.basename(image_file)), img_raw)
             # save_txt and return
         for b in dets:
             # @@TODO b4가 뭘까
             if b[4] < 0.5:
                 continue
+            conf_score = b[4]
             b = list(map(int, b))
             h, w, _ = img_raw.shape
             imgsz = 320
@@ -390,10 +433,29 @@ if __name__ == '__main__':
             b[12] = math.floor((b[12] / imgsz) * h)
             # landms
             # filename, score, (bx1,by1, bx2,by2), ((x1, y1), (x2, y2), (x3, y3), (x4, y4))
-            predict = [os.path.basename(image_files), b[4], [b[0],b[1],b[2],b[3]],
+            predict = [os.path.basename(image_file), b[4], [b[0],b[1],b[2],b[3]],
                         [[b[5], b[6]], [b[7], b[8]], [b[9], b[10]], [b[11], b[12]]]]
+            bw = b[2] - b[0]
+            bh = b[3] - b[1]
+            bbox = [b[0], b[1], bw, bh]
+            keypoints = [[b[5], b[6]], [b[7], b[8]], [b[9], b[10]], [b[11], b[12]]]
             result.append(predict)
-            if save_txt : 
-                f = open(os.path.join(output_path, os.path.splitext(os.path.basename(image_files))[0] + ".txt"), "w+")
+            if save_txt :
+                final_images.append(make_image(file_name=predict[0], height=h, width=w, id=image_id))
+                final_annotations.append(make_annotation(bbox=bbox, category_id=1, id=anno_id, image_id=anno_img_id, keypoints=keypoints))
+                detection_results.append(make_keypoints_results(image_id=anno_img_id, category_id=1, keypoints=keypoints, scores=conf_score))
+                os.makedirs(os.path.join(output_path,"labels"), exist_ok=True) 
+                f = open(os.path.join(output_path,"labels", os.path.splitext(os.path.basename(image_file))[0] + ".txt"), "w+")
                 f.write(" ".join(map(str, predict)))
                 f.close()
+    final_categories = make_categories("license-plate")
+    data = make_data(anntations=final_annotations, categories=final_categories, images=final_images)
+    
+    output_json_path = os.path.join(output_path, final_results_name +'.json')
+    with open(output_json_path, "w") as json_file:
+        json.dump(data, json_file, indent=4, cls=NpEncoder)
+        
+    output_json_path = os.path.join(output_path, final_results_name +'_detection.json')
+    with open(output_json_path, "w") as json_file:
+        json.dump(detection_results, json_file, indent=4, cls=NpEncoder)
+            

@@ -50,6 +50,7 @@ parser.add_argument('--save_folder', default='./weights/aug/', help='Location to
 args = parser.parse_args()
 
 if not os.path.exists(args.save_folder):
+    args.save_folder = '/root/deIdentification-clp/clp_landmark_detection/weights/23.11.14'
     os.mkdir(args.save_folder)
 cfg = None
 if args.network == "mobile0.25":
@@ -182,13 +183,13 @@ def train():
         batch_time = load_t1 - load_t0
         eta = int(batch_time * (max_iter - iteration))
         
-        print('Epoch:{}/{} || Epochiter: {}/{} || Iter: {}/{} || Loc: {:.4f} Cla: {:.4f} Landm: {:.4f} || LR: {:.8f} || Batchtime: {:.4f} s || ETA: {}'
+        print('Epoch:{}/{} || Epochiter: {}/{} || Iter: {}/{} || Loss : {:.4f} Loc: {:.4f} Cla: {:.4f} Landm: {:.4f} || LR: {:.8f} || Batchtime: {:.4f} s || ETA: {}'
               .format(epoch, max_epoch, (iteration % epoch_size) + 1,
-              epoch_size, iteration + 1, max_iter, loss_l.item(), loss_c.item(), loss_landm.item(), lr, batch_time, str(datetime.timedelta(seconds=eta))))
+              epoch_size, iteration + 1, max_iter,  loss / 4, loss_l.item(), loss_c.item(), loss_landm.item(), lr, batch_time, str(datetime.timedelta(seconds=eta))))
         # 로그 정보 저장
-        logging.info('Epoch:{}/{} || Epochiter: {}/{} || Iter: {}/{} || Loc: {:.4f} Cla: {:.4f} Landm: {:.4f} || LR: {:.8f} || Batchtime: {:.4f} s || ETA: {}'
+        logging.info('Epoch:{}/{} || Epochiter: {}/{} || Iter: {}/{} || Loss : {:.4f} Loc: {:.4f} Cla: {:.4f} Landm: {:.4f} || LR: {:.8f} || Batchtime: {:.4f} s || ETA: {}'
                     .format(epoch, max_epoch, (iteration % epoch_size) + 1,
-                    epoch_size, iteration + 1, max_iter, loss_l.item(), loss_c.item(), loss_landm.item(), lr, batch_time, str(datetime.timedelta(seconds=eta))))
+                    epoch_size, iteration + 1, max_iter, loss / 4, loss_l.item(), loss_c.item(), loss_landm.item(), lr, batch_time, str(datetime.timedelta(seconds=eta))))
         # 현재 epoch의 loss 값 저장
         if ((iteration % epoch_size) + 1) % epoch_size == 0 :
             losses.append(loss.item())
@@ -221,7 +222,7 @@ def train():
                     valid_loc_losses.append(loss_l)
                     valid_cls_losses.append(loss_c)
                     valid_landm_losses.append(loss_landm)
-                    valid_losses.append(loss)
+                    valid_losses.append(loss / 4)
                     
                     load_t1 = time.time()
                     batch_time = load_t1 - load_t0

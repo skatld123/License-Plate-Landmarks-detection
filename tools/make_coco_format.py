@@ -9,7 +9,7 @@ def make_data(anntations, images, categories):
 
 def make_annotation(bbox, category_id, id, image_id, keypoints):
     annotation = {
-        "area": 0,
+        "area": bbox[2] * bbox[3],
         "attributes": {
             "occluded": False
         },
@@ -62,3 +62,32 @@ def make_categories(cls_name) :
     ]
     return categories
 
+def make_keypoints_results(image_id, category_id, keypoints, scores) :
+    result = {
+        "image_id" : image_id,
+        "category_id" : category_id,
+        "keypoints" : [round(keypoints[0][0], 2), 
+                      round(keypoints[0][1], 2), 2, 
+                      round(keypoints[1][0], 2), 
+                      round(keypoints[1][1], 2), 2, 
+                      round(keypoints[2][0], 2), 
+                      round(keypoints[2][1], 2), 2, 
+                      round(keypoints[3][0], 2), 
+                      round(keypoints[3][1], 2), 2] ,
+        "score" : scores
+    }
+    return result
+
+
+def make_detections_results(image_id, category_id, bbox, scores) :
+    '''
+    obj detection의 결과 포맷을 만드는 메서드
+    : bbox : [x1, y1, w, h]
+    '''
+    result = {
+        "image_id" : image_id,
+        "category_id" : category_id,
+        "bbox" : bbox,
+        "score" : scores
+    }
+    return result

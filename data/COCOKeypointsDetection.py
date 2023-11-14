@@ -55,6 +55,7 @@ class COCOKeypointsDetection(data.Dataset):
 
                 target[idx, 0] = check_size(x1, width)
                 target[idx, 1] = check_size(y1, height)
+                # @@TODO w, h를 받아서 x2, y2로 변환하는것으로 바꿀 예정
                 target[idx, 2] = check_size(x2, width)
                 target[idx, 3] = check_size(y2, height)
                 
