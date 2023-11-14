@@ -19,22 +19,24 @@ import matplotlib.pyplot as plt
 
 
 # 로그를 저장할 폴더 설정
-log_folder = '/root/License-Plate-Landmarks-detection/logs/'
+log_folder = 'logs/'
 os.makedirs(log_folder, exist_ok=True)
 
 # 로그 파일 생성
-log_file = os.path.join(log_folder, '/root/License-Plate-Landmarks-detection/training_log.txt')
+log_file = os.path.join(log_folder, 'training_log.txt')
 logging.basicConfig(filename=log_file, level=logging.INFO, filemode="w",
                     format='%(asctime)s - %(levelname)s: %(message)s')
 
+dataset_root = '/root/dataset/dataset_4p_aug'
+img_dir = os.path.join(dataset_root, 'images')
 # 그래프 정보 저장을 위한 변수 초기화
 losses = []
 epochs = []
 
 parser = argparse.ArgumentParser(description='Retinaface Training')
 # parser.add_argument('--training_dataset', default='./data/widerface/train/label.txt', help='Training dataset directory')
-parser.add_argument('--training_dataset', default='/root/License-Plate-Landmarks-detection/data/dataset/train.json', help='Training dataset directory')
-parser.add_argument('--valid_dataset', default='/root/License-Plate-Landmarks-detection/data/dataset/test.json', help='val dataset directory')
+parser.add_argument('--training_dataset', default=os.path.join(dataset_root, 'train.json'), help='Training dataset directory')
+parser.add_argument('--valid_dataset', default=os.path.join(dataset_root, 'test.json'), help='val dataset directory')
 parser.add_argument('--network', default='resnet50', help='Backbone network mobile0.25 or resnet50')
 parser.add_argument('--num_workers', default=4, type=int, help='Number of workers used in dataloading')
 parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float, help='initial learning rate')
@@ -43,11 +45,12 @@ parser.add_argument('--resume_net', default=None, help='resume net for retrainin
 parser.add_argument('--resume_epoch', default=0, type=int, help='resume iter for retraining')
 parser.add_argument('--weight_decay', default=5e-4, type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float, help='Gamma update for SGD')
-parser.add_argument('--save_folder', default='./weights/', help='Location to save checkpoint models')
+parser.add_argument('--save_folder', default='./weights/aug/', help='Location to save checkpoint models')
 
 args = parser.parse_args()
 
 if not os.path.exists(args.save_folder):
+    args.save_folder = '/root/deIdentification-clp/clp_landmark_detection/weights/23.11.14'
     os.mkdir(args.save_folder)
 cfg = None
 if args.network == "mobile0.25":
@@ -119,7 +122,7 @@ def train():
     print('Loading Dataset...')
 
     # dataset = WiderFaceDetection( training_dataset,preproc(img_dim, rgb_mean))
-    dataset = COCOKeypointsDetection(training_dataset, preproc(img_dim, rgb_mean), transform=None, type="train")
+    dataset = COCOKeypointsDetection(training_dataset, img_dir, preproc(img_dim, rgb_mean), transform=None, type="train")
 
     epoch_size = math.ceil(len(dataset) / batch_size)
     max_iter = max_epoch * epoch_size
@@ -134,7 +137,7 @@ def train():
     
     # Valid Dataset Load
     print('Valid Loading Dataset...')
-    val_dataset = COCOKeypointsDetection(valid_dataset, preproc(img_dim, rgb_mean), transform=None, type="valid")
+    val_dataset = COCOKeypointsDetection(valid_dataset, img_dir, preproc(img_dim, rgb_mean), transform=None, type="valid")
     val_batch_iterator = iter(data.DataLoader(val_dataset, batch_size, shuffle=True, num_workers=num_workers, collate_fn=detection_collate))
     val_epoch_size = math.ceil(len(val_dataset) / batch_size)
     print("val_epoch_size : " + str(val_epoch_size))
@@ -180,13 +183,13 @@ def train():
         batch_time = load_t1 - load_t0
         eta = int(batch_time * (max_iter - iteration))
         
-        print('Epoch:{}/{} || Epochiter: {}/{} || Iter: {}/{} || Loc: {:.4f} Cla: {:.4f} Landm: {:.4f} || LR: {:.8f} || Batchtime: {:.4f} s || ETA: {}'
+        print('Epoch:{}/{} || Epochiter: {}/{} || Iter: {}/{} || Loss : {:.4f} Loc: {:.4f} Cla: {:.4f} Landm: {:.4f} || LR: {:.8f} || Batchtime: {:.4f} s || ETA: {}'
               .format(epoch, max_epoch, (iteration % epoch_size) + 1,
-              epoch_size, iteration + 1, max_iter, loss_l.item(), loss_c.item(), loss_landm.item(), lr, batch_time, str(datetime.timedelta(seconds=eta))))
+              epoch_size, iteration + 1, max_iter,  loss / 4, loss_l.item(), loss_c.item(), loss_landm.item(), lr, batch_time, str(datetime.timedelta(seconds=eta))))
         # 로그 정보 저장
-        logging.info('Epoch:{}/{} || Epochiter: {}/{} || Iter: {}/{} || Loc: {:.4f} Cla: {:.4f} Landm: {:.4f} || LR: {:.8f} || Batchtime: {:.4f} s || ETA: {}'
+        logging.info('Epoch:{}/{} || Epochiter: {}/{} || Iter: {}/{} || Loss : {:.4f} Loc: {:.4f} Cla: {:.4f} Landm: {:.4f} || LR: {:.8f} || Batchtime: {:.4f} s || ETA: {}'
                     .format(epoch, max_epoch, (iteration % epoch_size) + 1,
-                    epoch_size, iteration + 1, max_iter, loss_l.item(), loss_c.item(), loss_landm.item(), lr, batch_time, str(datetime.timedelta(seconds=eta))))
+                    epoch_size, iteration + 1, max_iter, loss / 4, loss_l.item(), loss_c.item(), loss_landm.item(), lr, batch_time, str(datetime.timedelta(seconds=eta))))
         # 현재 epoch의 loss 값 저장
         if ((iteration % epoch_size) + 1) % epoch_size == 0 :
             losses.append(loss.item())
@@ -219,7 +222,7 @@ def train():
                     valid_loc_losses.append(loss_l)
                     valid_cls_losses.append(loss_c)
                     valid_landm_losses.append(loss_landm)
-                    valid_losses.append(loss)
+                    valid_losses.append(loss / 4)
                     
                     load_t1 = time.time()
                     batch_time = load_t1 - load_t0

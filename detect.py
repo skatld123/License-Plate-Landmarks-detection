@@ -11,22 +11,20 @@ import cv2
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
-import numpy as np
+from tqdm import tqdm
+
 from clp_landmark_detection.data import cfg_mnet, cfg_re50
-from clp_landmark_detection.utils.nms.py_cpu_nms import py_cpu_nms
 from clp_landmark_detection.layers.functions.prior_box import PriorBox
-import cv2
 from clp_landmark_detection.models.retinaface import RetinaFace
 from clp_landmark_detection.utils.box_utils import decode, decode_landm
-import time
-from tqdm import tqdm
+from clp_landmark_detection.utils.nms.py_cpu_nms import py_cpu_nms
 
 parser = argparse.ArgumentParser(description='Retinaface')
 
 parser.add_argument('-m', '--trained_model', default='./weights/Resnet50_Final.pth',
                     type=str, help='Trained state_dict file path to open')
 parser.add_argument('--network', default='resnet50', help='Backbone network mobile0.25 or resnet50')
-parser.add_argument('--save_image', action="store_true",  default=True, help='save_img')
+parser.add_argument('--save_image', action="store_true",  default=False, help='save_img')
 parser.add_argument('--cpu', action="store_true", default=False, help='Use cpu inference')
 parser.add_argument('--confidence_threshold', default=0.02, type=float, help='confidence_threshold')
 parser.add_argument('--top_k', default=5000, type=int, help='top_k')
@@ -224,8 +222,9 @@ def predict(backbone='resnet50', save_img=False, save_txt=False, input_path=None
                 # print("img_raw.shape : " + str(img_raw.shape))
                 # print(("4-point : %d,%d / %d,%d / %d,%d / %d,%d" %
                 #       (b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12])))
-                cv2.imwrite(os.path.join(
-                    output_path, "images", os.path.basename(image_files)), img_raw)
+                save_path = os.path.join(output_path, "images")
+                os.makedirs(save_path, exist_ok=True)
+                cv2.imwrite(os.path.join(save_path, os.path.basename(image_files)), img_raw)
         # save_txt and return
         for b in dets:
             # @@TODO b4가 뭘까
@@ -262,12 +261,10 @@ def predict(backbone='resnet50', save_img=False, save_txt=False, input_path=None
                        [[b[5], b[6]], [b[7], b[8]], [b[9], b[10]], [b[11], b[12]]]]
             result.append(predict)
             if save_txt : 
-                f = open(output_path + "/labels/" +
-                         os.path.basename(image_files) + ".txt", "w+")
+                f = open(os.path.join(output_path, "/labels/", os.path.splitext(os.path.basename(image_files))[0] + ".txt"), "w+")
                 f.write(" ".join(map(str, predict)))
                 f.close()
     return result
-
 
 if __name__ == '__main__':
     torch.set_grad_enabled(False)
@@ -278,24 +275,26 @@ if __name__ == '__main__':
         cfg = cfg_re50
     # net and model
     net = RetinaFace(cfg=cfg, phase = 'test')
-    net = load_model(net, args.trained_model, args.cpu)
+    trained_model = '/root/clp_landmark_detection/Resnet50_Final.pth'
+    net = load_model(net, trained_model, args.cpu)
     net.eval()
     print('Finished loading model!')
     cudnn.benchmark = True
     device = torch.device("cpu" if args.cpu else "cuda")
     net = net.to(device)
     if args.save_model:
-        torch.save(net, "retinaface.pth")
-    
+        torch.save(net, "/root/deIdentification-clp/clp_landmark_detection/weights/aug/Resnet50_Final.pth")
     resize = 1
-
     
     image_path = args.input
+    image_path = '/root/dataset/dataset_4p_aug/images'
     if os.path.isdir(image_path) :
         image_files = [os.path.join(image_path, f) for f in os.listdir(image_path) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
     else : 
         image_files = [image_path]
-    
+    result = [] # cls, (bx1,by1, bx2,by2), ((x1, y1), (x2, y2), (x3, y3), (x4, y4))
+    save_txt = True
+    output_path = '/root/dataset/dataset_4p_aug/predicts/labels'
     for idx, image_files in enumerate(image_files) : 
         img_raw = cv2.imread(image_files, cv2.IMREAD_COLOR)
         img_resize = cv2.resize(img_raw,(args.imgsz, args.imgsz))
@@ -398,4 +397,30 @@ if __name__ == '__main__':
             print("img_raw.shape : " + str(img_raw.shape))
             print(("4-point : %d,%d / %d,%d / %d,%d / %d,%d" % (b[5],b[6], b[7],b[8], b[9],b[10], b[11],b[12])))
             cv2.imwrite(os.path.join(result_path, os.path.basename(image_files)), img_raw)
+            # save_txt and return
+        for b in dets:
+            # @@TODO b4가 뭘까
+            if b[4] < 0.5:
+                continue
+            b = list(map(int, b))
+            h, w, _ = img_raw.shape
+            imgsz = 320
+            # landms
+            b[5] = math.floor((b[5] / imgsz) * w)
+            b[7] = math.floor((b[7] / imgsz) * w)
+            b[9] = math.floor((b[9] / imgsz) * w)
+            b[11] = math.floor((b[11] / imgsz) * w)
 
+            b[6] = math.floor((b[6] / imgsz) * h)
+            b[8] = math.floor((b[8] / imgsz) * h)
+            b[10] = math.floor((b[10] / imgsz) * h)
+            b[12] = math.floor((b[12] / imgsz) * h)
+            # landms
+            # filename, score, (bx1,by1, bx2,by2), ((x1, y1), (x2, y2), (x3, y3), (x4, y4))
+            predict = [os.path.basename(image_files), b[4], [b[0],b[1],b[2],b[3]],
+                        [[b[5], b[6]], [b[7], b[8]], [b[9], b[10]], [b[11], b[12]]]]
+            result.append(predict)
+            if save_txt : 
+                f = open(os.path.join(output_path, os.path.splitext(os.path.basename(image_files))[0] + ".txt"), "w+")
+                f.write(" ".join(map(str, predict)))
+                f.close()
