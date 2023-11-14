@@ -19,22 +19,24 @@ import matplotlib.pyplot as plt
 
 
 # 로그를 저장할 폴더 설정
-log_folder = '/root//root/clp_landmark_detection/logs/'
+log_folder = 'logs/'
 os.makedirs(log_folder, exist_ok=True)
 
 # 로그 파일 생성
-log_file = os.path.join(log_folder, '/root//root/clp_landmark_detection/training_log.txt')
+log_file = os.path.join(log_folder, 'training_log.txt')
 logging.basicConfig(filename=log_file, level=logging.INFO, filemode="w",
                     format='%(asctime)s - %(levelname)s: %(message)s')
 
+dataset_root = '/root/dataset/dataset_4p_aug'
+img_dir = os.path.join(dataset_root, 'images')
 # 그래프 정보 저장을 위한 변수 초기화
 losses = []
 epochs = []
 
 parser = argparse.ArgumentParser(description='Retinaface Training')
 # parser.add_argument('--training_dataset', default='./data/widerface/train/label.txt', help='Training dataset directory')
-parser.add_argument('--training_dataset', default='/root//root/clp_landmark_detection/data/dataset/train.json', help='Training dataset directory')
-parser.add_argument('--valid_dataset', default='/root//root/clp_landmark_detection/data/dataset/test.json', help='val dataset directory')
+parser.add_argument('--training_dataset', default=os.path.join(dataset_root, 'train.json'), help='Training dataset directory')
+parser.add_argument('--valid_dataset', default=os.path.join(dataset_root, 'test.json'), help='val dataset directory')
 parser.add_argument('--network', default='resnet50', help='Backbone network mobile0.25 or resnet50')
 parser.add_argument('--num_workers', default=4, type=int, help='Number of workers used in dataloading')
 parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float, help='initial learning rate')
@@ -43,7 +45,7 @@ parser.add_argument('--resume_net', default=None, help='resume net for retrainin
 parser.add_argument('--resume_epoch', default=0, type=int, help='resume iter for retraining')
 parser.add_argument('--weight_decay', default=5e-4, type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float, help='Gamma update for SGD')
-parser.add_argument('--save_folder', default='./weights/', help='Location to save checkpoint models')
+parser.add_argument('--save_folder', default='./weights/aug/', help='Location to save checkpoint models')
 
 args = parser.parse_args()
 
@@ -119,7 +121,7 @@ def train():
     print('Loading Dataset...')
 
     # dataset = WiderFaceDetection( training_dataset,preproc(img_dim, rgb_mean))
-    dataset = COCOKeypointsDetection(training_dataset, preproc(img_dim, rgb_mean), transform=None, type="train")
+    dataset = COCOKeypointsDetection(training_dataset, img_dir, preproc(img_dim, rgb_mean), transform=None, type="train")
 
     epoch_size = math.ceil(len(dataset) / batch_size)
     max_iter = max_epoch * epoch_size
@@ -134,7 +136,7 @@ def train():
     
     # Valid Dataset Load
     print('Valid Loading Dataset...')
-    val_dataset = COCOKeypointsDetection(valid_dataset, preproc(img_dim, rgb_mean), transform=None, type="valid")
+    val_dataset = COCOKeypointsDetection(valid_dataset, img_dir, preproc(img_dim, rgb_mean), transform=None, type="valid")
     val_batch_iterator = iter(data.DataLoader(val_dataset, batch_size, shuffle=True, num_workers=num_workers, collate_fn=detection_collate))
     val_epoch_size = math.ceil(len(val_dataset) / batch_size)
     print("val_epoch_size : " + str(val_epoch_size))

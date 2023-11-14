@@ -11,7 +11,7 @@ import torch.utils.data as data
 import albumentations as A
 
 class COCOKeypointsDetection(data.Dataset):
-    def __init__(self, json_path, preproc=None, transform=None, type="train"):
+    def __init__(self, json_path, img_dir, preproc=None, transform=None, type="train"):
         self.preproc = preproc
         self.imgs_path = []
         self.annotations = []
@@ -22,8 +22,7 @@ class COCOKeypointsDetection(data.Dataset):
 
             # Extract image paths and annotations from COCO format
             for image_info in coco_data['images']:
-                img_dir = "/root/License-Plate-Landmarks-detection/data/dataset/images/"
-                self.imgs_path.append(img_dir + image_info['file_name'])
+                self.imgs_path.append(os.path.join(img_dir, image_info['file_name']))
                 image_id = image_info['id']
                 image_annotations = []
                 for anno in coco_data['annotations']:

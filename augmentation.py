@@ -10,12 +10,12 @@ import numpy as np
 KEYPOINT_COLOR = (0, 255, 0) # Green
 
 # 입력과 출력 디렉토리 경로 설정
-input_dir = '/root/dataset_clp/dataset_4p_700/images'  # 원본 데이터셋 디렉토리
-output_dir = '/root/dataset_clp/dataset_4p_aug/images'  # 증강된 데이터셋을 저장할 디렉토리
-annotation_dir = '/root/dataset_clp/dataset_4p_aug/'
-test_dir = '/root/dataset_clp/dataset_4p_aug/test'
+input_dir = '/dataset/dataset_4p_700/images'  # 원본 데이터셋 디렉토리
+output_dir = '/dataset/dataset_4p_aug/images'  # 증강된 데이터셋을 저장할 디렉토리
+annotation_dir = '/dataset/dataset_4p_aug/'
+test_dir = '/dataset/dataset_4p_aug/test'
 # 기존 anno를 선택 (train, test)
-annotation_path = '/root/dataset_clp/dataset_4p_700/test.json'
+annotation_path = '/dataset/dataset_4p_700/test.json'
 os.makedirs(output_dir, exist_ok=True)
 
 def vis_keypoints(image, keypoints, bboxes, category_ids, color=KEYPOINT_COLOR, diameter=3, save_path=None):
@@ -89,7 +89,7 @@ if __name__ == '__main__' :
         coco_data = json.load(json_file)
         # Extract image paths and annotations from COCO format
         for image_info in coco_data['images']:
-            # img_dir = "/root/dataset_clp/dataset_4p_700/images/"
+            # img_dir = "/dataset/dataset_4p_700/images/"
             imgs_paths.append(image_info['file_name'])
             image_id = image_info['id']
             image_annotations = []
